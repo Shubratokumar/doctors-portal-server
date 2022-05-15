@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const jwt = require('jsonwebtoken');
 const app = express();
 require('dotenv').config();
 const port = process.env.PORT || 5000;
@@ -19,6 +20,7 @@ async function run() {
         await client.connect();
         const serviceCollection = client.db("doctors_portal").collection("services");
         const bookingCollection = client.db("doctors_portal").collection("bookings");
+        const userCollection = client.db("doctors_portal").collection("users");
 
         /*******************************************************************************
          ****************************** API Naming Convention **************************
@@ -26,7 +28,7 @@ async function run() {
          * app.get('/booking/:id') // get a specific booking
          * app.post('/booking') // add a new booking
          * app.patch('/booking/:id') // update specific info a booking
-         * app.put('/booking/:id') // update whole info of a booking
+         * app.put('/booking/:id') // upsert ==> update (if exists) or insert (if doesn't exist)
          * app.delete('/booking/:id') // delete a specific booking
          * 
         *******************************************************************************/
@@ -66,6 +68,15 @@ async function run() {
           res.send(services);
         })
 
+        // GET : filter bookings only specific user
+        app.get('/booking', async(req,res)=>{
+          const patientEmail = req.query.patientEmail;
+          // const query = {patientEmail};
+          // const bookings = await bookingCollection.find(query).toArray();
+          const bookings = await bookingCollection.find({patientEmail}).toArray();
+          res.send(bookings);
+        })
+
         // POST : add new booking
         app.post('/booking', async(req,res) =>{
           const booking = req.body;
@@ -76,6 +87,22 @@ async function run() {
           }
           const result = await bookingCollection.insertOne(booking);
           return res.send({success: true, result});
+        });
+
+        // PUT : Upsert ==> update or insert
+        app.put('/user/:email', async(req,res) =>{
+          const email = req.params.email;
+          const user = req.body;
+          const filter = { email };
+          const options = { upsert: true };
+          const updateDoc = {
+            $set: user,
+          };
+          const result = await userCollection.updateOne(filter, updateDoc, options);
+          const token = jwt.sign({email: email}, process.env.ACCESS_TOKEN_SECRET,
+            {expiresIn : '1d'}
+            )
+          res.send({result, token});
         })
 
 
