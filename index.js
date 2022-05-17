@@ -39,6 +39,7 @@ async function run() {
         const serviceCollection = client.db("doctors_portal").collection("services");
         const bookingCollection = client.db("doctors_portal").collection("bookings");
         const userCollection = client.db("doctors_portal").collection("users");
+        const doctorCollection = client.db("doctors_portal").collection("doctors");
 
         /*******************************************************************************
          ****************************** API Naming Convention **************************
@@ -54,7 +55,7 @@ async function run() {
         // GET : Load all data
         app.get("/service", async(req,res) =>{
             const query = {};
-            const cursor = serviceCollection.find(query);
+            const cursor = serviceCollection.find(query).project({ name: 1 });
             const services = await cursor.toArray();
             res.send(services)
         })
@@ -158,10 +159,16 @@ async function run() {
             {expiresIn : '1d'}
             )
           res.send({result, token});
-        })
+        });
 
         // DELETE : delete a user by admin
 
+        // POST : Add new doctor
+        app.post('/doctor', async(req, res)=>{
+          const doctor = req.body;
+          const result = await doctorCollection.insertOne(doctor);
+          res.send(result);
+        });
 
     } finally {
 
