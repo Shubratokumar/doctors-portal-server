@@ -12,7 +12,6 @@ app.use(cors());
 app.use(express.json());
 
 // Database Connection : MongoDB
-
 const { MongoClient, ServerApiVersion } = require('mongodb');
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.xczhe.mongodb.net/myFirstDatabase?retryWrites=true&w=majority`;
 const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true, serverApi: ServerApiVersion.v1 });
@@ -34,7 +33,45 @@ const verifyJWT = (req,res, next) =>{
   })
 }
 
+// Email sender 
+const emailSenderOptions = {
+  auth: {
+    api_key: process.env.EMAIL_SENDER_KEY
+  }
+}
+
+const emailClient = nodemailer.createTransport(sgTransport(emailSenderOptions));
+
 const sendAppointmentEmail = (booking) =>{
+ const {treatment, date, patientEmail, patientName, slot} = booking;
+
+ var email = {
+  from: process.env.EMAIL_SENDER,
+  to: patientEmail,
+  subject: `Your Appointment for ${treatment} is on ${date} at ${slot} is Confirmed.`,
+  text: `Your Appointment for ${treatment} is on ${date} at ${slot} is Confirmed.`,
+  html: `
+    <div>
+      <p> Hello ${patientName}, </p>
+      <h3>Your Appointment for ${treatment} is consfirmed.</h3>
+      <p>Looking forward to seeing you on ${date} at ${slot}.</p>
+
+      <h3>Our Address</h3>
+      <p>Dhaka Contonment</p>
+      <p>Dhaka - 1206</p>
+      <a href = "https://shubratokumar.com">unsubscribe</a>
+    </div>
+  `
+};
+
+emailClient.sendMail(email, function(err, info){
+  if (err ){
+    console.log(err);
+  }
+  else {
+    console.log('Message sent: ', info);
+  }
+});
 
 }
 
@@ -126,7 +163,7 @@ async function run() {
             return res.send({success: false, booking: exists })
           }
           const result = await bookingCollection.insertOne(booking);
-          sendAppointmentEmail(booking)
+          sendAppointmentEmail(booking);
           return res.send({success: true, result});
         });
 
