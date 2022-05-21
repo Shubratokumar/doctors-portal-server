@@ -3,10 +3,11 @@ const cors = require('cors');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const jwt = require('jsonwebtoken');
 const app = express();
-const nodemailer = require('nodemailer');
-const sgTransport = require('nodemailer-sendgrid-transport');
 require('dotenv').config();
 const port = process.env.PORT || 5000;
+const nodemailer = require('nodemailer');
+const sgTransport = require('nodemailer-sendgrid-transport');
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
 // middleware
 app.use(cors());
@@ -42,6 +43,7 @@ const emailSenderOptions = {
 
 const emailClient = nodemailer.createTransport(sgTransport(emailSenderOptions));
 
+// Email send for confirm appointment
 const sendAppointmentEmail = (booking) =>{
  const {treatment, date, patientEmail, patientName, slot} = booking;
 
@@ -75,6 +77,41 @@ emailClient.sendMail(email, function(err, info){
 
 }
 
+// Payment Confirmation Email 
+const sendPaymentConfirmationEmail = (booking) =>{
+  const {treatment, date, patientEmail, patientName, slot} = booking;
+ 
+  var email = {
+   from: process.env.EMAIL_SENDER,
+   to: patientEmail,
+   subject: `We have received your payment for ${treatment} is on ${date} at ${slot} .`,
+   text: `Your payment for ${treatment} is on ${date} at ${slot} is Confirmed.`,
+   html: `
+     <div>
+       <p> Hello ${patientName}, </p>
+       <h3>Your Appointment for ${treatment} is confirmed.</h3>
+       <h3>We have received your payment for ${treatment} .</h3>
+       <p>Looking forward to seeing you on ${date} at ${slot}.</p>
+ 
+       <h3>Our Address</h3>
+       <p>Dhaka Contonment</p>
+       <p>Dhaka - 1206</p>
+       <a href = "https://shubratokumar.com">unsubscribe</a>
+     </div>
+   `
+ };
+ 
+ emailClient.sendMail(email, function(err, info){
+   if (err ){
+     console.log(err);
+   }
+   else {
+     console.log('Message sent: ', info);
+   }
+ });
+ 
+ }
+
 async function run() {
     try {
         await client.connect();
@@ -82,6 +119,7 @@ async function run() {
         const bookingCollection = client.db("doctors_portal").collection("bookings");
         const userCollection = client.db("doctors_portal").collection("users");
         const doctorCollection = client.db("doctors_portal").collection("doctors");
+        const paymentCollection = client.db("doctors_portal").collection("payments");
 
         /*******************************************************************************
          ****************************** API Naming Convention **************************
@@ -175,6 +213,22 @@ async function run() {
           return res.send({success: true, result});
         });
 
+        // PATCH : update booking after paid
+        app.patch('/booking/:id', verifyJWT, async(req, res)=>{
+          const id = req.params.id;
+          const payment = req.body;
+          const filter = {_id : ObjectId(id)};
+          const updateDoc = {
+            $set: {
+              paid : true,
+              transactionId : payment.transactionId,
+            },
+          };
+          const result = await paymentCollection.insertOne(payment);
+          const updateBooking = await bookingCollection.updateOne(filter, updateDoc);
+          res.send(updateDoc)
+        })
+
         // GET : Load All user
         app.get('/user', verifyJWT, async(req, res) =>{
           const users = await userCollection.find().toArray();
@@ -222,6 +276,24 @@ async function run() {
         app.get('/doctor',verifyJWT, verifyAdmin, async(req, res)=>{
           const doctors = await doctorCollection.find().toArray();
           res.send(doctors);
+        })
+
+        // Payment intent post api
+        app.post('/create-payment-intent', verifyJWT, async(req, res)=>{
+          const service = req.body;
+          const price = service.price;
+          const amount = price*100;
+
+          // Create a PaymentIntent with the order amount and currency
+          const paymentIntent = await stripe.paymentIntents.create({
+            amount: amount,
+            currency: "usd",
+            payment_method_types: ["card"]
+          });
+          res.send({
+            clientSecret: paymentIntent.client_secret
+          })
+
         })
 
         // POST : Add new doctor
